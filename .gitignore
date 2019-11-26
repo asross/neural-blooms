@@ -1,0 +1,10 @@
+.ipynb_checkpoints/
+__pycache__/
+*.DS_Store
+*.pyc
+*.aux
+*.bbl
+*.blg
+*.out
+*.log
+writeup/main.pdf
