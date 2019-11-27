@@ -110,6 +110,37 @@ phishing pages.'' For the model class of $f$, they choose relatively small GRU
 RNNs \citep{cho2014learning}. Overall, they demonstrate moderate reductions in
 memory footprints.
 
+The short section on Bloom filters from \citet{kraska2018case} is further
+formalized, clarified, and discussed by \citet{mitzenmacher2018model}. Several
+points are worth restating here. First, \citet{mitzenmacher2018model} notes
+that the claimed advantage of learned bloom filters---their awareness of the
+data distribution---can also be seen as limitation. Assuming perfect hashing,
+standard Bloom filters have false positive rates that are completely
+independent of the data distribution. This means that shifts in the data
+distribution (e.g. due to changes in the generating process, or the presence of
+an adversary with knowledge of individual queries but not the underlying hash
+functions) can never harm performance. However, the performance of learned
+Bloom filters can degrade significantly in the presence of such shifts.
+In the absence of shifts, however, \citet{mitzenmacher2018model} show that
+the difference between a learned Bloom filter's empirical false positive rate
+$X$ on a validation set $\mathcal{T}$ and $Y$, its false positive rate on some
+future query set $\mathcal{Q}$ (which is the quantity that actually affects
+downstream performance), is bounded by \begin{equation}
+  \Pr(|X-Y| \leq \epsilon) \leq 2e^{-\epsilon^2|\mathcal{T}|/2} + 2e^{-\epsilon^2|\mathcal{Q}|/2}.
+\end{equation}
+
+Another issue, related to distributional shifting, is that updates are more
+problematic for learned Bloom filters. Although the backup Bloom filter can
+simply receive the update (assuming $f(x') < \tau$ for the new key $x'$, i.e.
+$x'$ was not previously a false positive), this tends to come at a higher FPR
+increase. Additionally, after a certain number of inputs, users may wish to
+reconstruct the learned Bloom filter. Although in both the learned and standard
+Bloom filter cases this requires access to $\mathcal{K}$, the learned Bloom
+filter also needs $\mathcal{U}$ (which ideally should be expanded to include
+previous false positives) and must undergo a retraining procedure that is
+likely more computationally intensive than the $k$ hash function calls per
+element required for a standard Bloom filter.
+
 \begin{itemize}
     \item \cite{rae2019meta}
     \item \cite{hadian2019considerations}
