@@ -26,8 +26,11 @@
 \usepackage{nicefrac}       % compact symbols for 1/2, etc.
 \usepackage{microtype}      % microtypography
 \usepackage{natbib}
+\usepackage{bbm}
+\usepackage{amsmath}
+\newcommand{\tU}{\tilde{\mathcal{U}}}
 
-\title{Optimizing Learned Bloom Filters: Thresholds and Updates}
+\title{Improving Learned Bloom Filters: Losses and Updates}
 
 % The \author macro works with any number of authors. There are two commands
 % used to separate the names and addresses of multiple authors: \And and \AND.
@@ -56,10 +59,58 @@
 
 \section{Introduction}
 
-\section{Related Work}
+\section{Background and Related Work}
+
+Much of the recent interest in learned index structures has been inspired by
+\citet{kraska2018case}, which makes a compelling case for their potential.
+They argue that classical index structures like B-Trees, Hash-maps, and Bloom
+filters, which are ignorant of the data distribution, could be improved by the
+addition of machine learning components, which can be \emph{optimized} under
+data distributions.
+
+For Bloom filters, they identify that the core problem they try to solve is
+akin to binary classification, specifically determining whether queries $x$ are
+from a set of observed keys $\mathcal{K}$ or a set of non-keys $\mathcal{U}$.
+Rather than immediately checking a Bloom filter, they train a model $f(x)$ to
+predict membership in $\mathcal{K}$ ($\equiv y$) as a binary classification
+problem with a simple cross-entropy log loss, \begin{equation}
+  \mathcal{L}_{\mathrm{XE}}(f) \equiv \mathbb{E}_{x,y}\left[ y \log f(x) + (1-y) \log (1-f(x)) \right]
+\end{equation}
+and assume keys are present whenever its output ($f(x) \in [0,1]
+\forall x$) is above a threshold $\tau$.
+
+One important detail for this problem is that, while the key set $\mathcal{K}$
+is fixed and known beforehand, they must choose specific negative sets for
+training and validation which are subsets of $\mathcal{U}$. The validation set,
+$\tU$, is used to tune the threshold $\tau$, which defines an empirical false
+positive rate \begin{equation}
+  \mathrm{FPR}_\tau \equiv \frac{1}{|\tU|} \sum_{x \in \tU} \mathbbm{1}(f(x) > \tau)
+\end{equation}
+This model-specific false positive rate is not the false positive rate of the
+entire learned bloom filter, however, because we must also consider false
+negatives \begin{equation}
+  \mathcal{K}_{\tau}^{-} \equiv \{ x \in \mathcal{K} \,|\, f(x) < \tau \}.
+\end{equation}
+To ensure the overall structure never returns false negatives, entries from
+$\mathcal{K}_{\tau}^{-}$ must be inserted into a backup bloom filter $B$ with
+false positive rate $\mathrm{FPR}_B$, giving an overall false positive
+rate\footnote{We would like to thank Michael Mitzenmacher for identifying this
+when reviewing \citet{kraska2018case}.} \begin{equation}
+  \mathrm{FPR}_O = \mathrm{FPR}_\tau + (1 - \mathrm{FPR}_\tau)\mathrm{FPR}_B.
+\end{equation}
+In practice, users can tune $\tau$ and the size of the backup filter $B$ to
+achieve a desired overall false positive rate.
+
+For their problem, they consider text string data from a URL blacklisting
+application, so $\mathcal{K}$ is a set of blacklisted phishing URLs. For their
+negative training set and validation set $\tU$, they choose an even mixture of
+random valid URLs and random URLs from a whitelist of URLs which are not
+phishing pages but have been specifically marked as easily ``mistaken for
+phishing pages.'' For the model class of $f$, they choose relatively small GRU
+RNNs \citep{cho2014learning}. Overall, they demonstrate moderate reductions in
+memory footprints.
 
 \begin{itemize}
-    \item \cite{kraska2018case}
     \item \cite{rae2019meta}
     \item \cite{hadian2019considerations}
     \item \cite{mitzenmacher2018model}
