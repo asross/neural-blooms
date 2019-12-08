@@ -117,6 +117,11 @@ class GRUModel(Model):
         # self.model.save("model.h5")
         # self.model = load_model('model.h5')
 
+    def save(self, path):
+        self.model.save(path)
+
+    def load(self, path):
+        self.model = load_model(path)
 
     def predict(self, text_x):
         x = np.zeros((1, self.maxlen), dtype=np.int)

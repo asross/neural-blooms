@@ -5,6 +5,7 @@ import json
 from utils import *
 from keras.models import load_model
 import math
+import os
 
 def test_perfect_model(positives, negatives):
     print(len(positives))
@@ -60,7 +61,7 @@ def test_almost_perfect_model(positives, negatives):
     print(false_positives_test / len(negatives_test), "false positive rate for test.") 
 
 
-def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.001, pca_embedding_dim=None, maxlen=50, gru_size=16, batch_size=1024, hidden_size=None, second_gru_size=None, decay=0.0001, epochs=30):
+def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.001, pca_embedding_dim=None, maxlen=50, gru_size=16, batch_size=1024, hidden_size=None, second_gru_size=None, decay=0.0001, epochs=30, model_save_path=None):
     positives = positives[:int(data_fraction * len(positives))]
     negatives = negatives[:int(data_fraction * len(negatives))]
 
@@ -73,8 +74,15 @@ def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.0
 
     model = GRUModel('../data/glove.6B.50d-char.txt', 50, lr=lr, pca_embedding_dim=pca_embedding_dim, maxlen=maxlen, gru_size=gru_size, batch_size=batch_size, hidden_size=hidden_size, second_gru_size=second_gru_size, decay=decay, epochs=epochs)
     shuffled = shuffle_for_training(negatives_train, positives)
-
-    model.fit(shuffled[0], shuffled[1])
+    if model_save_path is not None:
+        if os.path.exists(model_save_path):
+            model.load(model_save_path)
+            print("Loaded pretrained model")
+        else:
+            model.fit(shuffled[0], shuffled[1])
+            model.save(model_save_path)
+            print("Done fitting")
+    
     print(model.model.summary())
     print("Params", model.model.count_params())
     # model.save('model_test.h5')
