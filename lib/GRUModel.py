@@ -6,8 +6,11 @@ from keras.layers import LSTM, Input, GRU
 from keras import optimizers
 from sklearn.decomposition import PCA
 import numpy as np
+import pickle
+import os
 from keras import backend as K
 from keras.regularizers import l2
+from keras.utils.generic_utils import get_custom_objects
 
 def focal_loss(alpha_p,alpha_n,gama):
 
@@ -37,6 +40,10 @@ class GRUModel(Model):
         self.alpha_p = alpha_p
         self.alpha_n = alpha_n
         self.gama = gama
+
+        loss = focal_loss(self.alpha_p,self.alpha_n,self.gama)
+        get_custom_objects().update({"loss": loss})
+
 
     def fit(self, text_X, text_y):
 
@@ -111,17 +118,29 @@ class GRUModel(Model):
     
         self.model = Sequential(layers)
         optimizer = optimizers.Adam(lr=self.lr, decay=self.decay)
-        self.model.compile(optimizer=optimizer, loss=focal_loss(self.alpha_p,self.alpha_n,self.gama), metrics=['accuracy'])
+
+        loss = focal_loss(self.alpha_p,self.alpha_n,self.gama)
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
         self.model.fit(X, y, batch_size=self.batch_size, epochs=self.epochs, verbose=2)
         # self.model.save("model.h5")
         # self.model = load_model('model.h5')
 
     def save(self, path):
+        assert('.h5' in path)
         self.model.save(path)
+        with open(path.replace('.h5', '_char_indices.pkl'), 'wb') as f:
+            pickle.dump(self.char_indices, f)
+        with open(path.replace('.h5', '_indices_char.pkl'), 'wb') as f:
+            pickle.dump(self.indices_char, f)
 
     def load(self, path):
+        assert('.h5' in path)
         self.model = load_model(path)
+        with open(path.replace('.h5', '_char_indices.pkl'), 'rb') as f:
+            self.char_indices = pickle.load(f)
+        with open(path.replace('.h5', '_indices_char.pkl'), 'rb') as f:
+            self.indices_char = pickle.load(f)
 
     def predict(self, text_x):
         x = np.zeros((1, self.maxlen), dtype=np.int)
@@ -143,5 +162,13 @@ class GRUModel(Model):
                 if t >= self.maxlen:
                     break
                 X[i, t + offset] = self.char_indices[char]
-        preds = [pred[0] for pred in self.model.predict(X)]
+        preds = np.array([pred[0] for pred in self.model.predict(X)])
         return preds
+
+    @property
+    def num_params(self):
+        return self.model.count_params()
+
+    @property
+    def size(self):
+        return self.num_params * 64

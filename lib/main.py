@@ -21,7 +21,7 @@ if __name__=='__main__':
     #print("Testing almost perfect...")
     #test_almost_perfect_model(positives, negatives)
     print("Testing GRU model...")
-    test_gru_model(positives, negatives, data_fraction=0.5, fp_rate=0.01, pca_embedding_dim=16, lr=0.001, maxlen=50, gru_size=16,
+    test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, pca_embedding_dim=16, lr=0.001, maxlen=50, gru_size=16,
             model_save_path='./gru_model.h5', epochs=1)
 
 
