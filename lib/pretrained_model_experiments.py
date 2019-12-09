@@ -42,7 +42,7 @@ class LBF():
         for i in range(len(positives)):
             if preds[i] <= self.threshold:
                 false_negatives.append(positives[i])
-        print("Number of false negatives at bloom time", len(false_negatives))
+        #print("Number of false negatives at bloom time", len(false_negatives))
         self.bloom_filter = BloomFilter(
             len(false_negatives),
             self.fp_rate / 2,
@@ -176,42 +176,56 @@ pos_preds = np.load(pos_pred_path)
 neg_preds_dev = np.load(neg_dev_pred_path)
 neg_preds_test = np.load(neg_test_pred_path)
 
+results = []
 
-lbf = LBF(model, 0.01)
-lbf.set_threshold(negatives_dev, neg_preds_dev)
-lbf.create_bloom_filter(positives, pos_preds)
-print(lbf.size)
+for fpr in np.logspace(-3,-0.5,11):
+    print("**** LBF target FPR = {} ****".format(fpr))
 
-bf = SizeBasedBloomFilter(len(positives), lbf.size, string_digest)
-print(bf.size)
+    lbf = LBF(model, fpr)
+    lbf.set_threshold(negatives_dev, neg_preds_dev)
+    lbf.create_bloom_filter(positives, pos_preds)
+    print("LBF size", lbf.size)
+    lbf_fpr = np.mean(lbf.check_many(negatives_test, neg_preds_test))
+    print("LBF fpr", lbf_fpr)
+    results.append(("LBF", lbf.size, lbf_fpr))
+    
+    bf = SizeBasedBloomFilter(len(positives), lbf.size, string_digest)
+    for p in positives:
+        bf.add(p)
+    print("BF size", bf.size)
+    bf_fpr = np.mean([bf.check(x) for x in negatives_test])
+    print("BF FPR", bf_fpr)
+    results.append(("BF", bf.size, bf_fpr))
 
-if False:
     slbf = sLBF(model, lbf.bloom_filter.size, lbf.threshold)
     slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
-    print(slbf.size)
-
-    bf_fpr = np.mean([bf.check(x) for x in negatives_test[:10000]])
-    print("BF FPR", bf_fpr)
-
-    lbf_fpr = np.mean(lbf.check_many(negatives_test[:10000], neg_preds_test))
-    print("LBF FPR", lbf_fpr)
-
-    slbf_fpr = np.mean(slbf.check_many(negatives_test[:10000], neg_preds_test))
+    print("sLBF size", slbf.size)
+    slbf_fpr = np.mean(slbf.check_many(negatives_test, neg_preds_test))
     print("sLBF FPR", slbf_fpr)
+    results.append(("sLBF", slbf.size, slbf_fpr))
 
-    ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 3, 1.5, bf.hash_count)
-    ada_lbf.create_bloom_filter(positives, pos_preds)
-    print(ada_lbf.size)
-
-    ada_fpr = np.mean(ada_lbf.check_many(negatives_test[:10000], neg_preds_test))
-    print("Ada FPR", ada_fpr)
-
-for g in [30]:
+    print("tuning AdaLBF")
+    lowest_fpr = float('inf')
+    best_params = None
+    best_adalbf = None
     for c in [1.01,1.05,1.1,1.5,2]:
-        for K1 in [np.arange(bf.hash_count-2, bf.hash_count * 2, 2)]:
-            ada_lbf = AdaLBF(model, lbf.bloom_filter.size, g, c, K1)
+        for K1 in np.arange(bf.hash_count-2, bf.hash_count * 2, 2):
+            ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 20, c, K1)
             ada_lbf.create_bloom_filter(positives, pos_preds)
             ada_fpr = np.mean(ada_lbf.check_many(negatives_dev[:10000], neg_preds_dev))
-            print(g,c,K1,ada_fpr)
+            print(c,K1,ada_fpr)
+            if ada_fpr < lowest_fpr:
+                lowest_fpr = ada_fpr
+                best_params = (c, K1) 
+                best_adalbf = ada_lbf
+    print("Done tuning")
+    adalbf = best_adalbf
+    print("AdaLBF size", adalbf.size)
+    adalbf_fpr = np.mean(adalbf.check_many(negatives_test, neg_preds_test))
+    print("AdaLBF FPR", adalbf_fpr)
+    results.append(("AdaLBF", adalbf.size, adalbf_fpr))
 
-import pdb; pdb.set_trace()
+with open("./results.csv", "w") as f:
+    f.write("Method,Size,FPR")
+    for m,size,fpr in results:
+        f.write("{},{},{}".format(m,size,fpr))

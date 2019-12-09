@@ -171,4 +171,4 @@ class GRUModel(Model):
 
     @property
     def size(self):
-        return self.num_params * 64
+        return self.num_params * 16

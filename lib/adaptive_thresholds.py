@@ -10,7 +10,7 @@ def make_adaptive_thresholds(probs, c, g):
     widths = mini_widths.astype(int)
     if widths.sum() < n:
         widths[0] += n - widths.sum()
-    print(widths)
+    #print(widths)
 
     thresholds = [0]
     i = 0
