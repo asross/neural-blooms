@@ -35,3 +35,40 @@ class BloomFilter(object):
 
     def get_bucket(self, item, i):
         return self.get_digest(item, i) % self.size
+
+class NullBloomFilter(object):
+    def __init__(self):
+        self.size = 0
+
+    def check(self, item):
+        return True
+
+    def add(self, item):
+        pass
+
+class SizeBasedBloomFilter(object):
+    def __init__(self, items_count, size, get_digest):
+        self.size = size
+        self.hash_count = self.get_hash_count(self.size, items_count)
+        self.bit_array = bitarray(self.size)
+        self.bit_array.setall(0)
+        self.get_digest = get_digest
+
+    def add(self, item):
+        for i in range(self.hash_count):
+            digest = self.get_bucket(item, i)
+            self.bit_array[digest] = 1
+
+    def check(self, item):
+        for i in range(self.hash_count):
+            digest = self.get_bucket(item, i)
+            if (self.bit_array[digest] == 0):
+                return False
+        return True
+
+    def get_hash_count(self, m, n):
+        k = (m/n) * math.log(2)
+        return int(k)
+
+    def get_bucket(self, item, i):
+        return self.get_digest(item, i) % self.size
