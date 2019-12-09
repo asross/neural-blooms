@@ -56,6 +56,57 @@ class LBF():
     def size(self):
         return self.bloom_filter.size + self.model.size
 
+
+class sLBF():
+    def __init__(self, model, budget, tau):
+        self.model = model
+        self.budget = budget
+        self.tau = tau
+        self.initial_bloom = None
+        self.backup_bloom = None
+
+    @property
+    def size(self):
+        return self.model.size + self.initial_bloom.size + self.backup_bloom.size
+
+    def check_many(self, items, preds=None):
+        if preds is None:
+            preds = self.model.predicts(items)
+        return [self.check(x,p=p) for x,p in zip(items, preds)]
+
+    def check(self, item, p=None):
+        if not self.initial_bloom.check(item): return False
+        if p is None: p = self.model.predict(item)
+        if p >= self.tau:
+            return True
+        else:
+            return self.backup_bloom.check(item)
+
+    def create_bloom_filters(self, positives, pos_preds, neg_preds):
+        fn_indices = np.argwhere(pos_preds < self.tau)[:,0]
+        fp_indices = np.argwhere(neg_preds >= self.tau)[:,0]
+        Fp = len(fp_indices) / len(neg_preds)
+        Fn = len(fn_indices) / len(pos_preds)
+        alpha = 0.5**np.log(2)
+        
+        b2 = int(min(self.budget, len(positives) * Fn * np.log(Fp / ((1-Fp)* ((1/Fn)- 1))) / np.log(alpha)))
+        b1 = self.budget - b2
+
+        if b1 == 0:
+            self.initial_bloom = NullBloomFilter()
+        else:
+            self.initial_bloom = SizeBasedBloomFilter(len(positives), b1, string_digest)
+            for p in positives:
+                self.initial_bloom.add(p)
+
+        if b2 == 0:
+            print("Probably should never see this")
+            self.backup_bloom = NullBloomFilter()
+        else:
+            self.backup_bloom = SizeBasedBloomFilter(len(fn_indices), b2, string_digest)
+            for j in fn_indices:
+                self.backup_bloom.add(positives[j])
+
 class DadaLBF():
     def __init__(self, model, budget, g, c):
         self.model = model
@@ -69,9 +120,8 @@ class DadaLBF():
 
     def check_many(self, items, preds=None):
         if preds is None:
-            return [self.check(x) for x in items]
-        else:
-            return [self.check(x,p=p) for x,p in zip(items, preds)]
+            preds = self.model.predicts(items)
+        return [self.check(x,p=p) for x,p in zip(items, preds)]
 
     def check(self, item, p=None):
         if p is None:
@@ -86,8 +136,9 @@ class DadaLBF():
             np.sum((preds >= taus[j])*(preds < taus[j+1])) for j in range(len(taus)-1)
         ])
         sizes = [self.g * len(preds)]
+        alpha = 0.5**np.log(2)
         for j in range(1, len(counts)-1):
-            size = counts[j] * (sizes[0]/counts[0] + j*(np.log(self.c)/np.log(0.6185)))
+            size = counts[j] * (sizes[0]/counts[0] + j*(np.log(self.c)/np.log(alpha)))
             assert(size >= 0)
             sizes.append(size)
         sizes.append(0)
@@ -146,11 +197,14 @@ neg_preds_test = np.load(neg_test_pred_path)
 lbf = LBF(model, 0.01)
 lbf.set_threshold(negatives_dev, neg_preds_dev)
 lbf.create_bloom_filter(positives, pos_preds)
+print(lbf.size)
 
 bf = SizeBasedBloomFilter(len(positives), lbf.size, string_digest)
-
 print(bf.size)
-print(lbf.size)
+
+slbf = sLBF(model, lbf.bloom_filter.size, lbf.threshold)
+slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
+print(slbf.size)
 
 dada_lbf = DadaLBF(model, lbf.bloom_filter.size, 20, 2)
 dada_lbf.create_bloom_filters(positives, pos_preds)
@@ -161,6 +215,9 @@ print("BF FPR", bf_fpr)
 
 lbf_fpr = np.mean(lbf.check_many(negatives_test[:10000], neg_preds_test))
 print("LBF FPR", lbf_fpr)
+
+slbf_fpr = np.mean(slbf.check_many(negatives_test[:10000], neg_preds_test))
+print("sLBF FPR", slbf_fpr)
 
 dada_fpr = np.mean(dada_lbf.check_many(negatives_test[:10000], neg_preds_test))
 print("Dada FPR", dada_fpr)
