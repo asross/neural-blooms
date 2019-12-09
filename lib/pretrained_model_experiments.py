@@ -178,7 +178,7 @@ neg_preds_test = np.load(neg_test_pred_path)
 
 results = []
 
-for fpr in np.logspace(-3,-0.5,11):
+for fpr in np.logspace(-3,-1,9):
     print("**** LBF target FPR = {} ****".format(fpr))
 
     lbf = LBF(model, fpr)
@@ -197,8 +197,29 @@ for fpr in np.logspace(-3,-0.5,11):
     print("BF FPR", bf_fpr)
     results.append(("BF", bf.size, bf_fpr))
 
-    slbf = sLBF(model, lbf.bloom_filter.size, lbf.threshold)
-    slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
+    print("tuning sLBF")
+    lowest_fpr = float('inf')
+    best_slbf = None
+    t = lbf.threshold
+    for tau in np.hstack([np.linspace(t*0.5, t, 7), np.linspace(t, min(1, t*1.25), 3)[1:]])[:-1]:
+        try:
+            slbf = sLBF(model, lbf.bloom_filter.size, tau)
+            slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
+            slbf_fpr = np.mean(slbf.check_many(negatives_dev, neg_preds_dev))
+            print(tau,slbf_fpr)
+        except:
+            # we hit a maximum and are getting division by 0
+            print("error at tau = {}".format(tau))
+            if best_slbf:
+                break
+            else:
+                continue
+        if slbf_fpr < lowest_fpr:
+            lowest_fpr = slbf_fpr
+            best_slbf = slbf
+
+    print("Done tuning")
+    slbf = best_slbf
     print("sLBF size", slbf.size)
     slbf_fpr = np.mean(slbf.check_many(negatives_test, neg_preds_test))
     print("sLBF FPR", slbf_fpr)
@@ -210,8 +231,9 @@ for fpr in np.logspace(-3,-0.5,11):
     best_adalbf = None
     for c in [1.01,1.05,1.1,1.5,2]:
         if lowest_fpr == 0: break
-        for K1 in np.arange(bf.hash_count, bf.hash_count * 2, 2):
-            ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 20, c, K1)
+        prev_fpr = None
+        for K1 in np.arange(bf.hash_count, bf.hash_count + 30, 2):
+            ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 30, c, K1)
             ada_lbf.create_bloom_filter(positives, pos_preds)
             ada_fpr = np.mean(ada_lbf.check_many(negatives_dev, neg_preds_dev))
             print(c,K1,ada_fpr)
@@ -220,6 +242,10 @@ for fpr in np.logspace(-3,-0.5,11):
                 best_params = (c, K1) 
                 best_adalbf = ada_lbf
             if lowest_fpr == 0: break
+            if prev_fpr is not None and prev_fpr < ada_fpr:
+                print("FPR going up, skipping")
+                break
+            prev_fpr = ada_fpr
     print("Done tuning")
     adalbf = best_adalbf
     print("AdaLBF size", adalbf.size)
@@ -230,4 +256,4 @@ for fpr in np.logspace(-3,-0.5,11):
 with open("./results.csv", "w") as f:
     f.write("Method,Size,FPR")
     for m,size,fpr in results:
-        f.write("{},{},{}".format(m,size,fpr))
+        f.write("{},{},{}\n".format(m,size,fpr))
