@@ -229,10 +229,11 @@ for fpr in np.logspace(-3,-1,9):
     lowest_fpr = float('inf')
     best_params = None
     best_adalbf = None
+    prev_best = None
     for c in [1.01,1.05,1.1,1.5,2]:
         if lowest_fpr == 0: break
         prev_fpr = None
-        for K1 in np.arange(bf.hash_count, bf.hash_count + 30, 2):
+        for K1 in np.arange(bf.hash_count, bf.hash_count + 30, 3):
             ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 30, c, K1)
             ada_lbf.create_bloom_filter(positives, pos_preds)
             ada_fpr = np.mean(ada_lbf.check_many(negatives_dev, neg_preds_dev))
@@ -246,6 +247,11 @@ for fpr in np.logspace(-3,-1,9):
                 print("FPR going up, skipping")
                 break
             prev_fpr = ada_fpr
+        if prev_best is not None and lowest_fpr == prev_best:
+            print("FPR not going down, skipping remaining cs")
+            break
+        prev_best = lowest_fpr
+
     print("Done tuning")
     adalbf = best_adalbf
     print("AdaLBF size", adalbf.size)
