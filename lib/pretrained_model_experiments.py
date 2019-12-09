@@ -15,8 +15,16 @@ class LBF():
         self.bloom_filter = None
         self.fp_rate = float(fp_rate)
 
-    def check(self, item):
-        if self.model.predict(item) > self.threshold:
+    def check_many(self, items, preds=None):
+        if preds is None:
+            return [self.check(x) for x in items]
+        else:
+            return [self.check(x,p) for x,p in zip(items, preds)]
+
+    def check(self, item, p=None):
+        if p is None:
+            p = self.model.predict(item)
+        if p > self.threshold:
             return True
         return self.bloom_filter.check(item)
 
@@ -59,8 +67,15 @@ class DadaLBF():
     def size(self):
         return self.model.size + sum([bf.size for bf in self.bloom_filters])
 
-    def check(self, item):
-        p = self.model.predict(item)
+    def check_many(self, items, preds=None):
+        if preds is None:
+            return [self.check(x) for x in items]
+        else:
+            return [self.check(x,p=p) for x,p in zip(items, preds)]
+
+    def check(self, item, p=None):
+        if p is None:
+            p = self.model.predict(item)
         for j in range(len(self.thresholds)):
             if p >= self.thresholds[j] and p < self.thresholds[j+1]:
                 return self.bloom_filters[j].check(item)
@@ -137,17 +152,17 @@ bf = SizeBasedBloomFilter(len(positives), lbf.size, string_digest)
 print(bf.size)
 print(lbf.size)
 
-dada_lbf = DadaLBF(model, lbf.bloom_filter.size, 30, 3)
+dada_lbf = DadaLBF(model, lbf.bloom_filter.size, 20, 2)
 dada_lbf.create_bloom_filters(positives, pos_preds)
 print(dada_lbf.size)
 
-bf_fpr = np.mean([bf.check(x) for x in negatives_test[:1000]])
+bf_fpr = np.mean([bf.check(x) for x in negatives_test[:10000]])
 print("BF FPR", bf_fpr)
 
-lbf_fpr = np.mean([lbf.check(x) for x in negatives_test[:1000]])
+lbf_fpr = np.mean(lbf.check_many(negatives_test[:10000], neg_preds_test))
 print("LBF FPR", lbf_fpr)
 
-dada_fpr = np.mean([dada_lbf.check(x) for x in negatives_test[:1000]])
+dada_fpr = np.mean(dada_lbf.check_many(negatives_test[:10000], neg_preds_test))
 print("Dada FPR", dada_fpr)
 
 import pdb; pdb.set_trace()
