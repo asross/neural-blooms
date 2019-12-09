@@ -209,6 +209,7 @@ for fpr in np.logspace(-3,-0.5,11):
     best_params = None
     best_adalbf = None
     for c in [1.01,1.05,1.1,1.5,2]:
+        if lowest_fpr == 0: break
         for K1 in np.arange(bf.hash_count-2, bf.hash_count * 2, 2):
             ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 20, c, K1)
             ada_lbf.create_bloom_filter(positives, pos_preds)
@@ -218,6 +219,7 @@ for fpr in np.logspace(-3,-0.5,11):
                 lowest_fpr = ada_fpr
                 best_params = (c, K1) 
                 best_adalbf = ada_lbf
+            if lowest_fpr == 0: break
     print("Done tuning")
     adalbf = best_adalbf
     print("AdaLBF size", adalbf.size)
