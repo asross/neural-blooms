@@ -66,7 +66,7 @@ def load_gru_model(lr=0.001, pca_embedding_dim=16, maxlen=50, gru_size=16, batch
     model.load(model_save_path)
     return model
 
-def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.001, pca_embedding_dim=None, maxlen=50, gru_size=16, batch_size=1024, hidden_size=None, second_gru_size=None, decay=0.0001, epochs=30, model_save_path=None):
+def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.001, pca_embedding_dim=None, maxlen=50, gru_size=16, batch_size=1024, hidden_size=None, second_gru_size=None, decay=0.0001, epochs=30, alpha_p=1,alpha_n=1,gama=0, model_save_path=None):
     positives = positives[:int(data_fraction * len(positives))]
     negatives = negatives[:int(data_fraction * len(negatives))]
 
@@ -77,7 +77,7 @@ def test_gru_model(positives, negatives, data_fraction=1.0, fp_rate=0.01, lr=0.0
     print("Split sizes:")
     print(len(positives), len(negatives_train), len(negatives_dev), len(negatives_test))
 
-    model = GRUModel('../data/glove.6B.50d-char.txt', 50, lr=lr, pca_embedding_dim=pca_embedding_dim, maxlen=maxlen, gru_size=gru_size, batch_size=batch_size, hidden_size=hidden_size, second_gru_size=second_gru_size, decay=decay, epochs=epochs)
+    model = GRUModel('../data/glove.6B.50d-char.txt', 50, lr=lr, pca_embedding_dim=pca_embedding_dim, maxlen=maxlen, gru_size=gru_size, batch_size=batch_size, hidden_size=hidden_size, second_gru_size=second_gru_size, decay=decay, epochs=epochs, alpha_p=alpha_p, alpha_n=alpha_n, gama=gama)
     shuffled = shuffle_for_training(negatives_train, positives)
     if model_save_path is not None:
         if os.path.exists(model_save_path):
