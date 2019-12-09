@@ -4,13 +4,13 @@ def make_adaptive_thresholds(probs, c, g):
     p = np.sort(probs)
     n = len(p)
     widths = [int(np.floor(c ** (np.log(n) / np.log(c))))]
-    print(widths)
 
     mini_widths = np.array([c ** (g-k) for k in range(g)])
     mini_widths = n * (mini_widths / mini_widths.sum())
     widths = mini_widths.astype(int)
     if widths.sum() < n:
         widths[0] += n - widths.sum()
+    print(widths)
 
     thresholds = [0]
     i = 0

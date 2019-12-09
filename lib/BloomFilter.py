@@ -54,13 +54,17 @@ class SizeBasedBloomFilter(object):
         self.bit_array.setall(0)
         self.get_digest = get_digest
 
-    def add(self, item):
-        for i in range(self.hash_count):
+    def add(self, item, count=None):
+        if count is None:
+            count = self.hash_count
+        for i in range(count):
             digest = self.get_bucket(item, i)
             self.bit_array[digest] = 1
 
-    def check(self, item):
-        for i in range(self.hash_count):
+    def check(self, item, count=None):
+        if count is None:
+            count = self.hash_count
+        for i in range(count):
             digest = self.get_bucket(item, i)
             if (self.bit_array[digest] == 0):
                 return False

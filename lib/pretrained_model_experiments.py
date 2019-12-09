@@ -107,16 +107,17 @@ class sLBF():
             for j in fn_indices:
                 self.backup_bloom.add(positives[j])
 
-class DadaLBF():
-    def __init__(self, model, budget, g, c):
+class AdaLBF():
+    def __init__(self, model, budget, g, c, K1):
         self.model = model
         self.budget = budget
         self.g = g
         self.c = c
+        self.K1 = K1
 
     @property
     def size(self):
-        return self.model.size + sum([bf.size for bf in self.bloom_filters])
+        return self.model.size + self.bloom_filter.size
 
     def check_many(self, items, preds=None):
         if preds is None:
@@ -126,40 +127,22 @@ class DadaLBF():
     def check(self, item, p=None):
         if p is None:
             p = self.model.predict(item)
-        for j in range(len(self.thresholds)):
+        for j in range(len(self.thresholds)-1):
             if p >= self.thresholds[j] and p < self.thresholds[j+1]:
-                return self.bloom_filters[j].check(item)
+                return self.bloom_filter.check(item, count=self.hash_counts[j])
 
-    def create_bloom_filters(self, positives, preds):
-        taus = make_adaptive_thresholds(preds, self.c, self.g)
-        counts = np.array([
-            np.sum((preds >= taus[j])*(preds < taus[j+1])) for j in range(len(taus)-1)
-        ])
-        sizes = [self.g * len(preds)]
-        alpha = 0.5**np.log(2)
-        for j in range(1, len(counts)-1):
-            size = counts[j] * (sizes[0]/counts[0] + j*(np.log(self.c)/np.log(alpha)))
-            assert(size >= 0)
-            sizes.append(size)
-        sizes.append(0)
-
-        sizes = np.array(sizes)
-        sizes = sizes / sizes.sum()
-        sizes = (self.budget * sizes).astype(int)
-        if sizes.sum() < self.budget:
-            sizes[0] += self.budget - sizes.sum()
-        assert(abs(sizes.sum() - self.budget) < 0.1)
-
-        self.thresholds = taus
-        self.bloom_filters = []
-        for i in range(len(counts)):
-            if sizes[i] == 0:
-                bf = NullBloomFilter()
+    def create_bloom_filter(self, positives, preds):
+        self.thresholds = make_adaptive_thresholds(preds, self.c, self.g)
+        self.bloom_filter = SizeBasedBloomFilter(len(positives), self.budget, string_digest)
+        self.hash_counts = []
+        for i in range(len(self.thresholds)-1):
+            if i == len(self.thresholds) - 2:
+                count = 0
             else:
-                bf = SizeBasedBloomFilter(counts[i], sizes[i], string_digest)
-                for j in np.argwhere((preds >= taus[i])*(preds < taus[i+1]))[:,0]:
-                    bf.add(positives[j])
-            self.bloom_filters.append(bf)
+                count = max(0, self.K1-i)
+            self.hash_counts.append(count)
+            for j in np.argwhere((preds >= self.thresholds[i])*(preds < self.thresholds[i+1]))[:,0]:
+                self.bloom_filter.add(positives[j], count=count)
 
 print("Loading dataset")
 with open('../data/dataset.json', 'r') as f:
@@ -202,24 +185,33 @@ print(lbf.size)
 bf = SizeBasedBloomFilter(len(positives), lbf.size, string_digest)
 print(bf.size)
 
-slbf = sLBF(model, lbf.bloom_filter.size, lbf.threshold)
-slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
-print(slbf.size)
+if False:
+    slbf = sLBF(model, lbf.bloom_filter.size, lbf.threshold)
+    slbf.create_bloom_filters(positives, pos_preds, neg_preds_dev)
+    print(slbf.size)
 
-dada_lbf = DadaLBF(model, lbf.bloom_filter.size, 20, 2)
-dada_lbf.create_bloom_filters(positives, pos_preds)
-print(dada_lbf.size)
+    bf_fpr = np.mean([bf.check(x) for x in negatives_test[:10000]])
+    print("BF FPR", bf_fpr)
 
-bf_fpr = np.mean([bf.check(x) for x in negatives_test[:10000]])
-print("BF FPR", bf_fpr)
+    lbf_fpr = np.mean(lbf.check_many(negatives_test[:10000], neg_preds_test))
+    print("LBF FPR", lbf_fpr)
 
-lbf_fpr = np.mean(lbf.check_many(negatives_test[:10000], neg_preds_test))
-print("LBF FPR", lbf_fpr)
+    slbf_fpr = np.mean(slbf.check_many(negatives_test[:10000], neg_preds_test))
+    print("sLBF FPR", slbf_fpr)
 
-slbf_fpr = np.mean(slbf.check_many(negatives_test[:10000], neg_preds_test))
-print("sLBF FPR", slbf_fpr)
+    ada_lbf = AdaLBF(model, lbf.bloom_filter.size, 3, 1.5, bf.hash_count)
+    ada_lbf.create_bloom_filter(positives, pos_preds)
+    print(ada_lbf.size)
 
-dada_fpr = np.mean(dada_lbf.check_many(negatives_test[:10000], neg_preds_test))
-print("Dada FPR", dada_fpr)
+    ada_fpr = np.mean(ada_lbf.check_many(negatives_test[:10000], neg_preds_test))
+    print("Ada FPR", ada_fpr)
+
+for g in [30]:
+    for c in [1.01,1.05,1.1,1.5,2]:
+        for K1 in [np.arange(bf.hash_count-2, bf.hash_count * 2, 2)]:
+            ada_lbf = AdaLBF(model, lbf.bloom_filter.size, g, c, K1)
+            ada_lbf.create_bloom_filter(positives, pos_preds)
+            ada_fpr = np.mean(ada_lbf.check_many(negatives_dev[:10000], neg_preds_dev))
+            print(g,c,K1,ada_fpr)
 
 import pdb; pdb.set_trace()
